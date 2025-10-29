@@ -13,6 +13,7 @@ import { supabase } from '../services/supabaseClient';
 import { useTheme } from '../utils/ThemeContext';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { cancelMedicationNotifications } from '../services/notificationService';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function DashboardScreen() {
   const { theme } = useTheme();
@@ -47,9 +48,25 @@ export default function DashboardScreen() {
       return;
     }
 
-    const name = user.email?.split('@')[0] || 'Usuário';
-    setUserName(name.charAt(0).toUpperCase() + name.slice(1));
+    // const name = user.email?.split('@')[0] || 'Usuário';
+    // setUserName(name.charAt(0).toUpperCase() + name.slice(1));
 
+    // Busca perfil na tabela "usuarios"
+    const { data: profile, error: profileError } = await supabase
+      .from('usuarios')
+      .select('nome')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!profileError && profile && profile.nome) {
+      const name = profile.nome;
+      setUserName(name.charAt(0).toUpperCase() + name.slice(1));
+    } else {
+      // fallback: usa parte do email se não houver perfil
+      const nameFromEmail = user.email?.split('@')[0] || 'Usuário';
+      setUserName(nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1));
+    }
+    
     const { data: meds, error: medsError } = await supabase
       .from('medicamentos')
       .select('*')
@@ -140,7 +157,7 @@ export default function DashboardScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchData} />}
@@ -173,41 +190,7 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <TouchableOpacity
-            style={[styles.quickActionButton, { backgroundColor: theme.colors.success }]}
-            onPress={() => navigation.navigate('AddMedicine')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.quickActionIcon}>
-              <Text style={styles.quickActionIconText}>+</Text>
-            </View>
-            <Text style={styles.quickActionText}>Adicionar</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.quickActionButton, { backgroundColor: theme.colors.secondary }]}
-            onPress={() => navigation.navigate('Settings')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.quickActionIcon}>
-              <Text style={styles.quickActionIconText}>⚙️</Text>
-            </View>
-            <Text style={styles.quickActionText}>Configurações</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.quickActionButton, { backgroundColor: theme.colors.danger }]}
-            onPress={handleSignOut}
-            activeOpacity={0.8}
-          >
-            <View style={styles.quickActionIcon}>
-              <Text style={styles.quickActionIconText}>🚪</Text>
-            </View>
-            <Text style={styles.quickActionText}>Sair</Text>
-          </TouchableOpacity>
-        </View>
+       
 
         {/* Medicamentos */}
         <View style={styles.section}>
@@ -307,7 +290,7 @@ export default function DashboardScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

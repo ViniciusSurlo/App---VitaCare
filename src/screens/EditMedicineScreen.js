@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '../utils/ThemeContext';
 import { supabase } from '../services/supabaseClient';
@@ -31,7 +32,7 @@ export default function EditMedicineScreen({ route, navigation }) {
 
   if (!medicine) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.errorContainer}>
           <Text style={styles.errorIcon}>⚠️</Text>
           <Text style={[styles.errorText, { color: theme.colors.text }]}>
@@ -44,7 +45,7 @@ export default function EditMedicineScreen({ route, navigation }) {
             <Text style={styles.errorButtonText}>Voltar</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -68,8 +69,8 @@ export default function EditMedicineScreen({ route, navigation }) {
   };
 
   const handleUpdate = async () => {
-    if (!nome.trim()) {
-      Alert.alert('Atenção', 'Informe o nome do medicamento.');
+    if (!nome || !dosagem || !quantidade) {
+      Alert.alert('Atenção', 'Preencha nome, dosagem e quantidade.');
       return;
     }
 
@@ -84,7 +85,7 @@ export default function EditMedicineScreen({ route, navigation }) {
       .update({
         nome,
         dosagem,
-        quantidade: quantidade ? parseInt(quantidade) : null,
+        quantidade: parseInt(quantidade),
         uso_continuo: usoContinuo,
         duracao_tratamento: usoContinuo ? null : parseInt(duracao),
         horarios,
@@ -100,11 +101,11 @@ export default function EditMedicineScreen({ route, navigation }) {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
-    >
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
@@ -192,9 +193,9 @@ export default function EditMedicineScreen({ route, navigation }) {
                   placeholder="Ex: 30 comprimidos"
                   placeholderTextColor={theme.colors.subText}
                   style={[styles.input, { color: theme.colors.text }]}
+                  keyboardType="numeric"
                   value={quantidade}
                   onChangeText={setQuantidade}
-                  keyboardType="numeric"
                 />
               </View>
             </View>
@@ -266,9 +267,9 @@ export default function EditMedicineScreen({ route, navigation }) {
                     placeholder="Ex: 7 dias"
                     placeholderTextColor={theme.colors.subText}
                     style={[styles.input, { color: theme.colors.text }]}
+                    keyboardType="numeric"
                     value={duracao}
                     onChangeText={setDuracao}
-                    keyboardType="numeric"
                   />
                 </View>
               </View>
@@ -334,13 +335,13 @@ export default function EditMedicineScreen({ route, navigation }) {
                     { backgroundColor: theme.colors.cardBackground },
                   ]}
                 >
-                  <Text style={styles.emptyHorariosIcon}>
-                    🕐</Text>
+                  <Text style={styles.emptyHorariosIcon}>🕐</Text>
                   <Text style={[styles.emptyHorariosText, { color: theme.colors.subText }]}>
                     Nenhum horário adicionado
                   </Text>
                 </View>
               )}
+
               {showPicker && (
                 <DateTimePicker
                   value={pickerTime}
@@ -368,29 +369,15 @@ export default function EditMedicineScreen({ route, navigation }) {
             >
               <Text style={styles.saveButtonText}>Salvar Alterações</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.cancelButton,
-                {
-                  backgroundColor: theme.colors.cardBackground,
-                  borderColor: theme.colors.border,
-                },
-              ]}
-              onPress={() => navigation.goBack()}
-            >
-              <Text style={[styles.cancelButtonText, { color: theme.colors.text }]}>
-                Cancelar
-              </Text>
-            </TouchableOpacity>
           </View>
 
-          <View style={{ height: 40 }} />
+          <View style={{ height: 100 }} />
         </ScrollView>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -426,7 +413,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingTop: 20,
     paddingBottom: 20,
   },
   backButton: {
@@ -633,7 +620,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
@@ -644,16 +630,5 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.5,
-  },
-  cancelButton: {
-    height: 60,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-  },
-  cancelButtonText: {
-    fontSize: 17,
-    fontWeight: '600',
   },
 });

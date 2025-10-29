@@ -9,8 +9,9 @@ import {
   Alert,
   Platform,
   ScrollView,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../services/supabaseClient';
 import { useTheme } from '../utils/ThemeContext';
@@ -86,7 +87,6 @@ export default function AddMedicineScreen({ navigation, route }) {
     if (error) {
       Alert.alert('Erro ao salvar', error.message);
     } else {
-      // Agenda as notificações para o medicamento recém-adicionado
       if (data && data.length > 0) {
         await scheduleMedicationNotifications(data[0]);
       }
@@ -96,11 +96,11 @@ export default function AddMedicineScreen({ navigation, route }) {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
-    >
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
@@ -366,10 +366,10 @@ export default function AddMedicineScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
 
-          <View style={{ height: 40 }} />
+          <View style={{ height: 100 }} />
         </ScrollView>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingTop: 20,
     paddingBottom: 20,
   },
   backButton: {
