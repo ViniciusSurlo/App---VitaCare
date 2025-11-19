@@ -8,10 +8,13 @@ import {
   ScrollView,
   Alert,
   TextInput,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../services/supabaseClient';
 import { useTheme } from '../utils/ThemeContext';
+import * as ImagePicker from 'expo-image-picker';
 
 export default function ProfileScreen({ navigation }) {
   const { theme } = useTheme();
@@ -23,7 +26,9 @@ export default function ProfileScreen({ navigation }) {
   const [newUserName, setNewUserName] = useState('');
   const [medicamentosCount, setMedicamentosCount] = useState(0);
   const [registrosCount, setRegistrosCount] = useState(0);
-
+  const [photoUrl, setPhotoUrl] = useState(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  
   useEffect(() => {
     getUserAndProfile();
   }, []);
@@ -37,7 +42,7 @@ export default function ProfileScreen({ navigation }) {
 
       const { data: usuarios, error: profileError } = await supabase
         .from('usuarios')
-        .select('id, nome, email')
+        .select('id, nome, email, foto_perfil')
         .eq('user_id', user.id);
 
       if (profileError) throw profileError;
@@ -47,6 +52,7 @@ export default function ProfileScreen({ navigation }) {
         setProfile(usuario);
         setUserName(usuario.nome);
         setNewUserName(usuario.nome);
+        setPhotoUrl(usuario.foto_perfil);
       } else {
         const fallbackNome = user.email?.split('@')[0] || 'Usuário';
         const { data: novoUsuario, error: insertError } = await supabase
@@ -100,6 +106,141 @@ export default function ProfileScreen({ navigation }) {
     }
   }
 
+  async function handlePickImage() {
+    try {
+      // Solicitar permissões
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permissão necessária',
+          'Por favor, permita o acesso à galeria de fotos nas configurações.'
+        );
+        return;
+      }
+
+      // Abrir galeria (corrigido MediaType)
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadPhoto(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Erro ao selecionar imagem:', error);
+      Alert.alert('Erro', 'Não foi possível selecionar a imagem.');
+    }
+  }
+
+  async function uploadPhoto(uri) {
+    if (!user || !profile) return;
+
+    setUploadingPhoto(true);
+
+    try {
+      // Criar FormData com o arquivo
+      const fileName = `${user.id}.jpg`;
+      const filePath = `${fileName}`;
+
+      // Criar objeto de arquivo para o React Native
+      const file = {
+        uri: uri,
+        name: fileName,
+        type: 'image/jpeg',
+      };
+
+      // Ler o arquivo como ArrayBuffer
+      const response = await fetch(uri);
+      const arrayBuffer = await response.arrayBuffer();
+      const fileData = new Uint8Array(arrayBuffer);
+
+      // Remover foto antiga se existir
+      if (photoUrl) {
+        await supabase.storage.from('avatars').remove([filePath]);
+      }
+
+      // Upload da nova foto
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, fileData, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Obter URL pública com timestamp para evitar cache
+      const { data: publicData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      const publicUrl = `${publicData.publicUrl}?t=${Date.now()}`;
+
+      // Atualizar no banco de dados
+      const { error: updateError } = await supabase
+        .from('usuarios')
+        .update({ foto_perfil: publicUrl })
+        .eq('id', profile.id);
+
+      if (updateError) throw updateError;
+
+      // Atualizar estado local
+      setPhotoUrl(publicUrl);
+      setProfile({ ...profile, foto_perfil: publicUrl });
+
+      Alert.alert('✅ Sucesso', 'Foto de perfil atualizada!');
+    } catch (error) {
+      console.error('Erro no upload:', error);
+      Alert.alert('Erro', 'Não foi possível fazer upload da foto: ' + error.message);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  async function handleRemovePhoto() {
+    if (!user || !profile || !photoUrl) return;
+
+    Alert.alert(
+      'Remover foto',
+      'Deseja remover sua foto de perfil?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Remover',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const fileName = `${user.id}.jpg`;
+              
+              // Remover do storage
+              await supabase.storage.from('avatars').remove([fileName]);
+
+              // Atualizar no banco de dados
+              const { error } = await supabase
+                .from('usuarios')
+                .update({ foto_perfil: null })
+                .eq('id', profile.id);
+
+              if (error) throw error;
+
+              // Limpar estado local completamente
+              setPhotoUrl(null);
+              setProfile({ ...profile, foto_perfil: null });
+              
+              Alert.alert('✅ Sucesso', 'Foto removida!');
+            } catch (error) {
+              console.error('Erro ao remover foto:', error);
+              Alert.alert('Erro', 'Não foi possível remover a foto.');
+            }
+          },
+        },
+      ]
+    );
+  }
+
   async function handleSignOut() {
     Alert.alert(
       'Sair',
@@ -140,10 +281,50 @@ export default function ProfileScreen({ navigation }) {
 
         {/* Avatar e Info */}
         <View style={styles.profileSection}>
-          <View style={[styles.avatarLarge, { backgroundColor: theme.colors.primary }]}>
-            <Text style={styles.avatarLargeText}>{userName.charAt(0)}</Text>
+          {/* Avatar com foto ou inicial */}
+          <View style={styles.avatarContainer}>
+            {photoUrl ? (
+              <Image
+                key={photoUrl}
+                source={{ uri: photoUrl, cache: 'reload' }}
+                style={styles.avatarImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={[styles.avatarLarge, { backgroundColor: theme.colors.primary }]}>
+                <Text style={styles.avatarLargeText}>{userName.charAt(0)}</Text>
+              </View>
+            )}
+
+            {/* Botão de upload/edição */}
+            {uploadingPhoto ? (
+              <View style={[styles.uploadButton, { backgroundColor: theme.colors.primary }]}>
+                <ActivityIndicator size="small" color="#fff" />
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.uploadButton, { backgroundColor: theme.colors.primary }]}
+                onPress={handlePickImage}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.uploadIcon}>📷</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
+          {/* Botão de remover foto (se existir) */}
+          {photoUrl && !uploadingPhoto && (
+            <TouchableOpacity
+              style={[styles.removePhotoButton, { borderColor: theme.colors.danger }]}
+              onPress={handleRemovePhoto}
+            >
+              <Text style={[styles.removePhotoText, { color: theme.colors.danger }]}>
+                Remover foto
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Edição de nome */}
           {isEditing ? (
             <View style={styles.editNameContainer}>
               <TextInput
@@ -252,7 +433,7 @@ export default function ProfileScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-      {/* Danger Zone */}
+        {/* Danger Zone */}
         <View style={styles.dangerSection}>
           <TouchableOpacity
             style={[
@@ -310,13 +491,26 @@ const styles = StyleSheet.create({
     paddingVertical: 32,
     paddingHorizontal: 20,
   },
+  avatarContainer: {
+    position: 'relative',
+    marginBottom: 16,
+  },
   avatarLarge: {
     width: 100,
     height: 100,
     borderRadius: 50,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  avatarImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
@@ -327,6 +521,38 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 42,
     fontWeight: '700',
+  },
+  uploadButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  uploadIcon: {
+    fontSize: 18,
+  },
+  removePhotoButton: {
+    marginTop: 8,
+    marginBottom: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    borderWidth: 1.5,
+  },
+  removePhotoText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   profileName: {
     fontSize: 28,
@@ -464,18 +690,6 @@ const styles = StyleSheet.create({
   dangerSection: {
     paddingHorizontal: 20,
     marginBottom: 32,
-  },
-  dangerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
   },
   dangerLabel: {
     fontSize: 17,

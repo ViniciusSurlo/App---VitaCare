@@ -43,10 +43,13 @@
             "buildToolsVersion": "35.0.0",
             "enableProguardInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
-            "enableMinifyInReleaseBuilds": true
+            "enableMinifyInReleaseBuilds": true,
+            "package": "com.seuapp.vitacare"
+
           }
         }
-      ]
+      ],
+      "./plugins/withFullScreenAlarm.js"
     ],
     "extra": {
       "eas": {

@@ -91,6 +91,13 @@ export default function AddMedicineScreen({ navigation, route }) {
         await scheduleMedicationNotifications(data[0]);
       }
       Alert.alert('✅ Sucesso', 'Medicamento adicionado!');
+      // Limpar dados 
+      setNome('');
+      setDosagem('');
+      setQuantidade('');
+      setUsoContinuo(false);
+      setDuracao('');
+      setHorarios([]);
       navigation.goBack();
     }
   };

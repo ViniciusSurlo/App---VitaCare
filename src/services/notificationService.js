@@ -1,19 +1,43 @@
 // src/services/notificationService.js
 import * as Notifications from 'expo-notifications';
 import moment from 'moment';
-import { Alert } from 'react-native';
+import { Alert, Platform, AppState } from 'react-native';
 import { supabase } from './supabaseClient';
 
 // ========================================
 // CONFIGURAÇÃO GLOBAL DE NOTIFICAÇÕES
 // ========================================
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
+  handleNotification: async (notification) => {
+    // Se o app estiver em foreground, não mostra o banner/som/vibração padrão
+    // A lógica de modal já cuida disso.
+    const isForeground = AppState.currentState === 'active';
+    
+    // Se estiver em foreground, o modal é aberto.
+    // Se estiver em background/quit, a notificação padrão (ou fullScreenIntent) é exibida.
+    return {
+      shouldShowAlert: isForeground, // Mostra o banner apenas se estiver em foreground
+      shouldPlaySound: !isForeground, // Toca o som apenas se estiver em background/quit
+      shouldSetBadge: true,
+    };
+  },
 });
+
+// ADICIONADO: Configuração do canal de notificação para FullScreenIntent
+// Este canal deve ser criado antes de agendar a primeira notificação
+export async function setupNotificationChannel() {
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('alarm-channel', {
+      name: 'Alarme de Medicamento',
+      importance: Notifications.AndroidImportance.MAX,
+      sound: 'default', // Usar som padrão ou um som customizado
+      vibrationPattern: [0, 250, 250, 250],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      // O fullScreenIntent é configurado no código nativo (Config Plugin)
+      // Aqui apenas garantimos a importância máxima.
+    });
+  }
+}
 
 // ========================================
 // VARIÁVEL GLOBAL PARA ARMAZENAR O CALLBACK DO MODAL
@@ -73,6 +97,9 @@ export async function scheduleMedicationNotifications(medicamento) {
   }
 
   const now = moment();
+
+  // ADICIONADO: Configura o canal antes de agendar
+  await setupNotificationChannel();
   let endDate = null;
 
   if (!medicamento.uso_continuo && medicamento.duracao_tratamento > 0) {
@@ -95,16 +122,44 @@ export async function scheduleMedicationNotifications(medicamento) {
       userId: medicamento.user_id,
     };
 
+    // ADICIONADO: Ações de notificação (Botões Tomar e Adiar)
+    const notificationActions = [
+      {
+        identifier: 'tomar',
+        buttonTitle: 'Tomar',
+        options: {
+          opensApp: false, // Não abre o app, apenas executa a ação
+        },
+      },
+      {
+        identifier: 'adiar',
+        buttonTitle: 'Adiar 5 min',
+        options: {
+          opensApp: false, // Não abre o app, apenas executa a ação
+        },
+      },
+    ];
+
+    // Define a categoria para as ações
+    await Notifications.setNotificationCategoryAsync('medication-alarm', notificationActions);
+
+    const notificationContent = {
+      title: `💊 ${medicamento.nome}`,
+      body: `Hora de tomar ${medicamento.dosagem || 'seu medicamento'}`,
+      sound: true,
+      priority: 'high',
+      data: notificationData,
+      categoryIdentifier: 'medication-alarm', // Usa a categoria com botões
+      // ADICIONADO: Canal para FullScreenIntent
+      android: {
+        channelId: 'alarm-channel',
+      },
+    };
+
     if (medicamento.uso_continuo) {
       // Notificação diária contínua
       const identifier = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `💊 ${medicamento.nome}`,
-          body: `Hora de tomar ${medicamento.dosagem || 'seu medicamento'}`,
-          sound: true,
-          priority: 'high',
-          data: notificationData,
-        },
+        content: notificationContent,
         trigger: {
           hour: scheduledTime.hour(),
           minute: scheduledTime.minute(),
@@ -117,13 +172,7 @@ export async function scheduleMedicationNotifications(medicamento) {
       let current = moment(scheduledTime);
       while (current.isSameOrBefore(endDate)) {
         const identifier = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: `💊 ${medicamento.nome}`,
-            body: `Hora de tomar ${medicamento.dosagem || 'seu medicamento'}`,
-            sound: true,
-            priority: 'high',
-            data: { ...notificationData, unico: true },
-          },
+          content: { ...notificationContent, data: { ...notificationData, unico: true } },
           trigger: current.toDate(),
         });
         console.log(`⏳ Notificação única agendada para ${medicamento.nome} em ${current.format('DD/MM HH:mm')} (ID: ${identifier})`);
@@ -313,34 +362,54 @@ export function listenToNotifications() {
 export function listenToNotificationResponses() {
   return Notifications.addNotificationResponseReceivedListener(async (response) => {
     const { data } = response.notification.request.content;
-    console.log('📩 Usuário interagiu com a notificação:', data);
+    const actionIdentifier = response.actionIdentifier;
+    console.log('📩 Usuário interagiu com a notificação:', data, 'Ação:', actionIdentifier);
 
-    // Quando usuário toca na notificação, abre o modal
-    if (notificationModalCallback && data.medicamentoId) {
-      const medicamento = {
-        id: data.medicamentoId,
-        nome: data.nome,
-        dosagem: data.dosagem,
-        horario: data.horario,
-        userId: data.userId,
-      };
+    const medicamento = {
+      id: data.medicamentoId,
+      nome: data.nome,
+      dosagem: data.dosagem,
+      horario: data.horario,
+      userId: data.userId,
+    };
 
-      // Busca outros no mesmo horário
-      const medicamentosNoMesmoHorario = await getMedicationsForTime(
-        data.userId,
-        data.horario
-      );
+    if (actionIdentifier === 'tomar') {
+      // Ação "Tomar" da notificação tipo mensagem
+      await registerMedicationTaken(medicamento);
+      // Opcional: Cancelar a notificação que gerou a resposta
+      await Notifications.dismissNotificationAsync(response.notification.request.identifier);
+      return;
+    }
 
-      if (medicamentosNoMesmoHorario.length > 0) {
-        notificationModalCallback(medicamentosNoMesmoHorario.map(med => ({
-          id: med.id,
-          nome: med.nome,
-          dosagem: med.dosagem,
-          horario: data.horario,
-          userId: data.userId,
-        })));
-      } else {
-        notificationModalCallback([medicamento]);
+    if (actionIdentifier === 'adiar') {
+      // Ação "Adiar" da notificação tipo mensagem
+      await snoozeNotification(medicamento);
+      // Opcional: Cancelar a notificação que gerou a resposta
+      await Notifications.dismissNotificationAsync(response.notification.request.identifier);
+      return;
+    }
+
+    // Se o usuário tocou na notificação (ação padrão)
+    if (actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
+      // Quando usuário toca na notificação, abre o modal (comportamento existente)
+      if (notificationModalCallback && data.medicamentoId) {
+        // Busca outros no mesmo horário
+        const medicamentosNoMesmoHorario = await getMedicationsForTime(
+          data.userId,
+          data.horario
+        );
+
+        if (medicamentosNoMesmoHorario.length > 0) {
+          notificationModalCallback(medicamentosNoMesmoHorario.map(med => ({
+            id: med.id,
+            nome: med.nome,
+            dosagem: med.dosagem,
+            horario: data.horario,
+            userId: data.userId,
+          })));
+        } else {
+          notificationModalCallback([medicamento]);
+        }
       }
     }
   });
@@ -360,4 +429,5 @@ export default {
   listenToNotifications,
   listenToNotificationResponses,
   setNotificationModalCallback,
+  setupNotificationChannel, // EXPORTADO
 };

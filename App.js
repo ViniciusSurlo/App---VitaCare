@@ -8,6 +8,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from './src/services/supabaseClient';
 import * as notificationService from './src/services/notificationService';
+import { addAlarmActionListener } from './src/services/fullScreenAlarmBridge'; // ADICIONADO: Bridge para o alarme fullscreen
 import { ThemeProvider, useTheme } from './src/utils/ThemeContext';
 
 // Telas
@@ -18,6 +19,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import EditMedicineScreen from './src/screens/EditMedicineScreen';
 import NotificationModal from './src/components/NotificationModal';
+import MedicamentosScreen from './src/screens/MedicamentosScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -30,6 +32,7 @@ function DashboardStack() {
       <Stack.Screen name="DashboardMain" component={DashboardScreen} />
       <Stack.Screen name="Adicionar" component={AddMedicineScreen} />
       <Stack.Screen name="EditMedicine" component={EditMedicineScreen} />
+      <Stack.Screen name="Medicamentos" component={MedicamentosScreen} />
     </Stack.Navigator>
   );
 }
@@ -55,7 +58,7 @@ function TabNavigator() {
             if (route.name === 'Dashboard') iconName = focused ? 'home' : 'home-outline';
             else if (route.name === 'Adicionar') iconName = focused ? 'add-circle' : 'add-circle-outline';
             else if (route.name === 'Perfil') iconName = focused ? 'person' : 'person-outline';
-            else if (route.name === 'Configurações') iconName = focused ? 'settings' : 'settings-outline';
+            else if (route.name === 'Settings') iconName = focused ? 'settings' : 'settings-outline';
             return <Ionicons name={iconName} size={size} color={color} />;
           },
           tabBarActiveTintColor: theme.colors.primary,
@@ -65,9 +68,9 @@ function TabNavigator() {
         <Tab.Screen name="Dashboard" component={DashboardStack} />
         <Tab.Screen name="Adicionar" component={AddMedicineScreen} />
         <Tab.Screen name="Perfil" component={ProfileScreen} />
-        <Tab.Screen name="Configurações" component={SettingsScreen} />
+        <Tab.Screen name="Settings" component={SettingsScreen} />
       </Tab.Navigator>
-    </SafeAreaView>
+      </SafeAreaView>
   );
 }
 
@@ -103,10 +106,34 @@ function AppContent() {
 
     const notificationListener = notificationService.listenToNotifications();
     const responseListener = notificationService.listenToNotificationResponses();
+    
+    // ADICIONADO: Listener para as ações do alarme fullscreen (Android)
+    const alarmActionListener = addAlarmActionListener(async (payload) => {
+      console.log('🚨 Ação do Alarme FullScreen recebida:', payload);
+      const { action, medicamento } = payload;
+      
+      // O medicamento vem como um objeto simples, precisa ser mapeado para o formato esperado
+      const med = {
+        id: medicamento.medicamentoId,
+        nome: medicamento.nome,
+        dosagem: medicamento.dosagem,
+        horario: medicamento.horario,
+        userId: medicamento.userId,
+      };
+
+      if (action === 'tomar') {
+        await notificationService.registerMedicationTaken(med);
+        // Opcional: Cancelar notificações pendentes relacionadas
+        // Como a Activity fecha, a notificação de sistema deve ser dispensada automaticamente.
+      } else if (action === 'adiar') {
+        await notificationService.snoozeNotification(med);
+      }
+    });
 
     return () => {
       notificationListener.remove();
       responseListener.remove();
+      alarmActionListener.remove(); // Limpa o listener do alarme
     };
   }, []);
 
@@ -141,7 +168,7 @@ function AppContent() {
         backgroundColor={theme.colors.background}
       />
       <NavigationContainer>
-        <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
+        <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
           <Stack.Navigator screenOptions={{ headerShown: false }}>
             {session && session.user ? (
               <Stack.Screen name="MainApp" component={TabNavigator} />

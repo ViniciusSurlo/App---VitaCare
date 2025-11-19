@@ -8,6 +8,7 @@ import {
   ScrollView,
   Alert,
   RefreshControl,
+  Image,
 } from "react-native";
 import { supabase } from "../services/supabaseClient";
 import { useTheme } from "../utils/ThemeContext";
@@ -26,6 +27,7 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(false);
   const [userName, setUserName] = useState("");
   const [greeting, setGreeting] = useState("");
+  const [userPhoto, setUserPhoto] = useState(null); // ADICIONADO: Estado para a foto de perfil
 
   useEffect(() => {
     if (isFocused) {
@@ -51,25 +53,29 @@ export default function DashboardScreen() {
       return;
     }
 
-    // const name = user.email?.split('@')[0] || 'Usuário';
-    // setUserName(name.charAt(0).toUpperCase() + name.slice(1));
-
     // Busca perfil na tabela "usuarios"
     const { data: profile, error: profileError } = await supabase
       .from("usuarios")
-      .select("nome")
+      .select("nome, foto_perfil") // MODIFICADO: Adicionado 'foto_perfil'
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (!profileError && profile && profile.nome) {
-      const name = profile.nome;
-      setUserName(name.charAt(0).toUpperCase() + name.slice(1));
+      
+    if (!profileError && profile) {
+      if (profile.nome) {
+        const name = profile.nome;
+        setUserName(name.charAt(0).toUpperCase() + name.slice(1));
+      }
+      // ADICIONADO: Define a URL da foto
+      setUserPhoto(profile.foto_perfil); 
     } else {
       // fallback: usa parte do email se não houver perfil
       const nameFromEmail = user.email?.split("@")[0] || "Usuário";
       setUserName(
         nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1)
       );
+      // ADICIONADO: Garante que a foto é nula no fallback
+      setUserPhoto(null);
     }
 
     const { data: meds, error: medsError } = await supabase
@@ -171,6 +177,10 @@ export default function DashboardScreen() {
     ]);
   };
 
+  // Mostrar apenas os 3 primeiros medicamentos
+  const medicamentosExibidos = medicamentos.slice(0, 3);
+  const temMaisMedicamentos = medicamentos.length > 3;
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
@@ -199,10 +209,21 @@ export default function DashboardScreen() {
               styles.avatarContainer,
               { backgroundColor: theme.colors.primary },
             ]}
+            onPress={() => navigation.navigate("Perfil")} 
           >
-            <Text style={styles.avatarText}>{userName.charAt(0)}</Text>
+            {userPhoto ? ( // ADICIONADO: Lógica para exibir a foto
+              <Image
+                key={userPhoto}
+                source={{ uri: userPhoto, cache: 'reload' }}
+                style={styles.avatarImage}
+                resizeMode="cover"
+              />
+            ) : ( // ADICIONADO: Fallback para a inicial
+              <Text style={styles.avatarText}>{userName.charAt(0)}</Text>
+            )}
           </TouchableOpacity>
         </View>
+
         {/* Stats Card */}
         <View
           style={[
@@ -223,7 +244,8 @@ export default function DashboardScreen() {
             <Text style={styles.statLabel}>Registros Hoje</Text>
           </View>
         </View>
-        // Dentro do componente
+
+        {/* Botão de Teste de Notificação */}
         <TouchableOpacity
           style={{
             backgroundColor: "#4A90E2",
@@ -363,11 +385,25 @@ export default function DashboardScreen() {
             </View>
           )}
         </View>
-        {/* Histórico */}
+
+        {/* Histórico de Uso */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-            Histórico Recente
-          </Text>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+              Últimos Registros
+            </Text>
+            {historicoUso.length > 0 && (
+              <TouchableOpacity
+                onPress={() => navigation.navigate("Historico")}
+              >
+                <Text
+                  style={[styles.sectionLink, { color: theme.colors.primary }]}
+                >
+                  Ver tudo
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           {historicoUso.length > 0 ? (
             historicoUso.map((item) => (
@@ -384,10 +420,10 @@ export default function DashboardScreen() {
                 <View
                   style={[
                     styles.historyIconBg,
-                    { backgroundColor: theme.colors.success + "20" },
+                    { backgroundColor: theme.colors.success + "15" },
                   ]}
                 >
-                  <Text style={styles.historyIcon}>✓</Text>
+                  <Text style={styles.historyIcon}>✅</Text>
                 </View>
                 <View style={styles.historyInfo}>
                   <Text
@@ -410,17 +446,21 @@ export default function DashboardScreen() {
             <View
               style={[
                 styles.emptyState,
-                { backgroundColor: theme.colors.cardBackground },
+                {
+                  backgroundColor: theme.colors.cardBackground,
+                  borderColor: theme.colors.border,
+                },
               ]}
             >
-              <Text style={styles.emptyIcon}>📋</Text>
-              <Text style={[styles.emptyText, { color: theme.colors.subText }]}>
-                Nenhum registro ainda
+              <Text style={styles.emptyIcon}>📝</Text>
+              <Text style={[styles.emptyText, { color: theme.colors.text }]}>
+                Nenhum registro de uso recente.
               </Text>
             </View>
           )}
         </View>
-        <View style={{ height: 40 }} />
+
+       
       </ScrollView>
     </SafeAreaView>
   );
@@ -435,13 +475,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
+    paddingVertical: 16,
   },
   greetingText: {
     fontSize: 16,
     fontWeight: "500",
-    marginBottom: 4,
   },
   userName: {
     fontSize: 28,
@@ -449,21 +487,28 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   avatarContainer: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowRadius: 12,
     elevation: 6,
   },
   avatarText: {
     color: "#fff",
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
+  },
+  // ADICIONADO: Estilo para a imagem de perfil
+  avatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    resizeMode: "cover",
   },
   statsCard: {
     flexDirection: "row",
@@ -497,34 +542,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     opacity: 0.3,
     marginHorizontal: 24,
-  },
-  quickActions: {
-    flexDirection: "row",
-    paddingHorizontal: 20,
-    gap: 12,
-    marginBottom: 24,
-  },
-  quickActionButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 16,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  quickActionIcon: {
-    marginBottom: 8,
-  },
-  quickActionIconText: {
-    fontSize: 24,
-  },
-  quickActionText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "700",
   },
   section: {
     paddingHorizontal: 20,
@@ -608,6 +625,22 @@ const styles = StyleSheet.create({
   },
   actionBtnIcon: {
     fontSize: 20,
+  },
+  viewAllButton: {
+    marginTop: 8,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 2,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  viewAllButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
   },
   historyCard: {
     flexDirection: "row",
