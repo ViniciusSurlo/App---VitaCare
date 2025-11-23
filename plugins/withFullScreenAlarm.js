@@ -18,11 +18,12 @@ const withFullScreenIntentPermission = (config) => {
   return withAndroidManifest(config, (config) => {
     const androidManifest = config.modResults;
 
-    // Adiciona a permissão
-    if (!androidManifest.manifest.uses-permission) {
+    // CORREÇÃO: Acessar o array de permissões de forma segura
+    if (!androidManifest.manifest['uses-permission']) {
       androidManifest.manifest['uses-permission'] = [];
     }
 
+    // Adiciona a permissão se ainda não existir
     if (
       !androidManifest.manifest['uses-permission'].some(
         (item) => item.$['android:name'] === FULL_SCREEN_INTENT_PERMISSION
