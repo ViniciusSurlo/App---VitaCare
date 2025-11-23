@@ -3,13 +3,15 @@ const {
   withDangerousMod,
   withPlugins,
   createRunOncePlugin,
+  withAppBuildGradle,
 } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
 const FULL_SCREEN_INTENT_PERMISSION = 'android.permission.USE_FULL_SCREEN_INTENT';
 const FULL_SCREEN_ACTIVITY_NAME = '.FullScreenAlarmActivity';
-const PACKAGE_NAME = 'com.vitacare.alarm'; // Nome do pacote para o código nativo
+const PACKAGE_NAME = 'com.vitacare.alarm'; // Pacote para o código nativo
+const APP_PACKAGE_NAME = 'com.vitacare.app'; // Pacote principal do app (assumido)
 
 /**
  * 1. Adiciona a permissão USE_FULL_SCREEN_INTENT ao AndroidManifest.xml
@@ -18,7 +20,7 @@ const withFullScreenIntentPermission = (config) => {
   return withAndroidManifest(config, (config) => {
     const androidManifest = config.modResults;
 
-    // CORREÇÃO: Acessar o array de permissões de forma segura
+    // Acessar o array de permissões de forma segura
     if (!androidManifest.manifest['uses-permission']) {
       androidManifest.manifest['uses-permission'] = [];
     }
@@ -87,6 +89,7 @@ const withFullScreenAlarmNativeCode = (config) => {
       await fs.promises.mkdir(layoutDir, { recursive: true });
 
       // --- Código Kotlin para FullScreenAlarmActivity.kt ---
+      // CORREÇÃO: Importação correta do R e tratamento do Bundle?
       const activityCode = `package ${PACKAGE_NAME}
 
 import android.content.Context
@@ -97,11 +100,10 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import com.facebook.react.ReactActivity
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.modules.core.DeviceEventManagerModule
-import com.vitacare.app.R // Assumindo que o R é do seu projeto Expo
+import ${APP_PACKAGE_NAME}.R // CORREÇÃO: Importa o R do pacote principal do app
 
 class FullScreenAlarmActivity : AppCompatActivity() {
 
@@ -133,7 +135,8 @@ class FullScreenAlarmActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_full_screen_alarm)
 
-        val data = intent.getBundleExtra(EXTRA_MEDICATION_DATA)
+        // CORREÇÃO: Trata o Bundle como nulo
+        val data: Bundle? = intent.getBundleExtra(EXTRA_MEDICATION_DATA)
         val nome = data?.getString("nome") ?: "Medicamento"
         val dosagem = data?.getString("dosagem") ?: "Dose"
         val horario = data?.getString("horario") ?: "Agora"
@@ -160,11 +163,14 @@ class FullScreenAlarmActivity : AppCompatActivity() {
      */
     private fun sendActionToJS(action: String, data: Bundle?) {
         val reactContext = applicationContext as? ReactContext ?: return
+        
+        // CORREÇÃO: Garante que o Bundle não é nulo antes de chamar Arguments.fromBundle
+        val medicationMap = if (data != null) Arguments.fromBundle(data) else Arguments.createMap()
 
         // Cria o payload para o JS
         val payload = Arguments.createMap().apply {
             putString("action", action)
-            putMap("medicamento", Arguments.fromBundle(data))
+            putMap("medicamento", medicationMap)
         }
 
         // Envia o evento para o JS
@@ -176,7 +182,7 @@ class FullScreenAlarmActivity : AppCompatActivity() {
 `;
       await fs.promises.writeFile(path.join(srcDir, 'FullScreenAlarmActivity.kt'), activityCode);
 
-      // --- Código XML para activity_full_screen_alarm.xml ---
+      // --- Código XML para activity_full_screen_alarm.xml (inalterado) ---
       const layoutCode = `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
