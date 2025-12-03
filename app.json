@@ -28,7 +28,15 @@
       "navigationBar": {
         "visible": "immersive",
         "barStyle": "light-content"
-      }
+      },
+      "permissions": [
+        "USE_FULL_SCREEN_INTENT",
+        "SCHEDULE_EXACT_ALARM",
+        "POST_NOTIFICATIONS",
+        "VIBRATE",
+        "WAKE_LOCK"
+      ],
+      "googleServicesFile": "./android/app/google-services.json"
     },
     "web": {
       "favicon": "./assets/logo.png"
@@ -44,9 +52,17 @@
             "enableProguardInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
             "enableMinifyInReleaseBuilds": true,
-            "package": "com.seuapp.vitacare"
-
+            "package": "com.seuapp.vitacare",
+            "minSdkVersion": 23
           }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#ffffff",
+          "sounds": []
         }
       ],
       "./plugins/withFullScreenAlarm.js"

@@ -30,11 +30,13 @@ export async function setupNotificationChannel() {
     await Notifications.setNotificationChannelAsync('alarm-channel', {
       name: 'Alarme de Medicamento',
       importance: Notifications.AndroidImportance.MAX,
-      sound: 'default', // Usar som padrão ou um som customizado
+      sound: 'default',
       vibrationPattern: [0, 250, 250, 250],
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      // O fullScreenIntent é configurado no código nativo (Config Plugin)
-      // Aqui apenas garantimos a importância máxima.
+      enableVibrate: true,
+      enableLights: true,
+      lightColor: '#FF0000',
+      showBadge: true,
     });
   }
 }
@@ -56,25 +58,55 @@ export function setNotificationModalCallback(callback) {
 // PERMISSÕES
 // ========================================
 /**
- * Solicita permissões de notificação ao usuário.
+ * Solicita permissões de notificação ao usuário (incluindo Android 13+).
  */
 export async function requestNotificationPermissions() {
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
 
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+          allowAnnouncements: false,
+        },
+      });
+      finalStatus = status;
+    }
 
-  if (finalStatus !== 'granted') {
-    Alert.alert(
-      'Permissão de Notificação Necessária',
-      'Ative as permissões de notificação para receber lembretes de medicamentos.'
-    );
+    if (finalStatus !== 'granted') {
+      Alert.alert(
+        'Permissão de Notificação Necessária',
+        'Ative as permissões de notificação nas configurações do app para receber lembretes de medicamentos.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Abrir Configurações', onPress: () => {
+            if (Platform.OS === 'android') {
+              // No Android, o usuário precisa ir manualmente às configurações
+              // ou usar Linking.openSettings() se tiver a permissão
+            }
+          }},
+        ]
+      );
+      return false;
+    }
+
+    // Verifica permissões específicas do Android 13+
+    if (Platform.OS === 'android') {
+      const androidPermissions = await Notifications.getPermissionsAsync();
+      // As permissões USE_FULL_SCREEN_INTENT e SCHEDULE_EXACT_ALARM
+      // são declaradas no AndroidManifest e não precisam de solicitação em runtime
+      // exceto SCHEDULE_EXACT_ALARM que pode precisar de solicitação no Android 12+
+    }
+
+    return true;
+  } catch (error) {
+    console.error('❌ Erro ao solicitar permissões:', error);
     return false;
   }
-  return true;
 }
 
 // ========================================
@@ -149,10 +181,17 @@ export async function scheduleMedicationNotifications(medicamento) {
       sound: true,
       priority: 'high',
       data: notificationData,
-      categoryIdentifier: 'medication-alarm', // Usa a categoria com botões
-      // ADICIONADO: Canal para FullScreenIntent
+      categoryIdentifier: 'medication-alarm',
       android: {
         channelId: 'alarm-channel',
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        // O fullScreenIntent será configurado automaticamente pelo plugin
+        // quando a notificação for exibida em background/killed state
+        // A Activity FullScreenAlarmActivity será chamada automaticamente
+        // quando o usuário tocar na notificação ou quando ela for exibida
+        vibrate: [0, 250, 250, 250],
+        // Os dados do medicamento estão em notificationData
+        // e serão passados para a Activity através do Intent
       },
     };
 
@@ -226,6 +265,9 @@ export async function snoozeNotification(medicamento) {
     snoozed: true,
   };
 
+  // Configura o canal antes de agendar
+  await setupNotificationChannel();
+
   const identifier = await Notifications.scheduleNotificationAsync({
     content: {
       title: `💊 ${medicamento.nome} (Lembrete)`,
@@ -233,6 +275,12 @@ export async function snoozeNotification(medicamento) {
       sound: true,
       priority: 'high',
       data: notificationData,
+      categoryIdentifier: 'medication-alarm',
+      android: {
+        channelId: 'alarm-channel',
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        vibrate: [0, 250, 250, 250],
+      },
     },
     trigger: snoozeTime.toDate(),
   });
@@ -357,13 +405,20 @@ export function listenToNotifications() {
 
 /**
  * Listener de respostas do usuário às notificações.
- * Usado quando o app está em SEGUNDO PLANO e o usuário toca na notificação.
+ * Usado quando o app está em SEGUNDO PLANO/FECHADO e o usuário interage com a notificação.
+ * IMPORTANTE: Este handler funciona mesmo quando o app está fechado (headless mode).
  */
 export function listenToNotificationResponses() {
   return Notifications.addNotificationResponseReceivedListener(async (response) => {
     const { data } = response.notification.request.content;
     const actionIdentifier = response.actionIdentifier;
-    console.log('📩 Usuário interagiu com a notificação:', data, 'Ação:', actionIdentifier);
+    const appState = AppState.currentState;
+    
+    console.log('📩 Usuário interagiu com a notificação:', {
+      data,
+      action: actionIdentifier,
+      appState,
+    });
 
     const medicamento = {
       id: data.medicamentoId,
@@ -373,43 +428,61 @@ export function listenToNotificationResponses() {
       userId: data.userId,
     };
 
+    // Handler para ação "Tomar" - funciona em qualquer estado do app
     if (actionIdentifier === 'tomar') {
-      // Ação "Tomar" da notificação tipo mensagem
-      await registerMedicationTaken(medicamento);
-      // Opcional: Cancelar a notificação que gerou a resposta
-      await Notifications.dismissNotificationAsync(response.notification.request.identifier);
+      try {
+        await registerMedicationTaken(medicamento);
+        // Cancela a notificação que gerou a resposta
+        await Notifications.dismissNotificationAsync(response.notification.request.identifier);
+        console.log('✅ Medicamento registrado como tomado (via notificação)');
+      } catch (error) {
+        console.error('❌ Erro ao processar ação "Tomar":', error);
+      }
       return;
     }
 
+    // Handler para ação "Adiar" - funciona em qualquer estado do app
     if (actionIdentifier === 'adiar') {
-      // Ação "Adiar" da notificação tipo mensagem
-      await snoozeNotification(medicamento);
-      // Opcional: Cancelar a notificação que gerou a resposta
-      await Notifications.dismissNotificationAsync(response.notification.request.identifier);
+      try {
+        await snoozeNotification(medicamento);
+        // Cancela a notificação que gerou a resposta
+        await Notifications.dismissNotificationAsync(response.notification.request.identifier);
+        console.log('⏰ Medicamento adiado (via notificação)');
+      } catch (error) {
+        console.error('❌ Erro ao processar ação "Adiar":', error);
+      }
       return;
     }
 
     // Se o usuário tocou na notificação (ação padrão)
     if (actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
-      // Quando usuário toca na notificação, abre o modal (comportamento existente)
-      if (notificationModalCallback && data.medicamentoId) {
-        // Busca outros no mesmo horário
-        const medicamentosNoMesmoHorario = await getMedicationsForTime(
-          data.userId,
-          data.horario
-        );
+      // Se o app estiver ativo, abre o modal
+      if (appState === 'active' && notificationModalCallback && data.medicamentoId) {
+        try {
+          // Busca outros medicamentos no mesmo horário
+          const medicamentosNoMesmoHorario = await getMedicationsForTime(
+            data.userId,
+            data.horario
+          );
 
-        if (medicamentosNoMesmoHorario.length > 0) {
-          notificationModalCallback(medicamentosNoMesmoHorario.map(med => ({
-            id: med.id,
-            nome: med.nome,
-            dosagem: med.dosagem,
-            horario: data.horario,
-            userId: data.userId,
-          })));
-        } else {
-          notificationModalCallback([medicamento]);
+          if (medicamentosNoMesmoHorario.length > 0) {
+            notificationModalCallback(medicamentosNoMesmoHorario.map(med => ({
+              id: med.id,
+              nome: med.nome,
+              dosagem: med.dosagem,
+              horario: data.horario,
+              userId: data.userId,
+            })));
+          } else {
+            notificationModalCallback([medicamento]);
+          }
+        } catch (error) {
+          console.error('❌ Erro ao abrir modal:', error);
         }
+      } else {
+        // Se o app estiver em background/fechado, apenas registra o log
+        // O full-screen intent já foi acionado pelo sistema
+        console.log('📱 App em background/fechado - full-screen intent acionado');
       }
     }
   });

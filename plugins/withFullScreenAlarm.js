@@ -9,34 +9,44 @@ const fs = require('fs');
 const path = require('path');
 
 const FULL_SCREEN_INTENT_PERMISSION = 'android.permission.USE_FULL_SCREEN_INTENT';
+const SCHEDULE_EXACT_ALARM_PERMISSION = 'android.permission.SCHEDULE_EXACT_ALARM';
+const POST_NOTIFICATIONS_PERMISSION = 'android.permission.POST_NOTIFICATIONS';
 const FULL_SCREEN_ACTIVITY_NAME = '.FullScreenAlarmActivity';
-const PACKAGE_NAME = 'com.vitacare.alarm'; // Pacote para o código nativo
-const APP_PACKAGE_NAME = 'com.vitacare.app'; // Pacote principal do app (assumido)
 
 /**
- * 1. Adiciona a permissão USE_FULL_SCREEN_INTENT ao AndroidManifest.xml
+ * 1. Adiciona todas as permissões necessárias ao AndroidManifest.xml
  */
 const withFullScreenIntentPermission = (config) => {
   return withAndroidManifest(config, (config) => {
     const androidManifest = config.modResults;
+    const packageName = config.android?.package || 'com.seuapp.vitacare';
 
     // Acessar o array de permissões de forma segura
     if (!androidManifest.manifest['uses-permission']) {
       androidManifest.manifest['uses-permission'] = [];
     }
 
-    // Adiciona a permissão se ainda não existir
-    if (
-      !androidManifest.manifest['uses-permission'].some(
-        (item) => item.$['android:name'] === FULL_SCREEN_INTENT_PERMISSION
-      )
-    ) {
-      androidManifest.manifest['uses-permission'].push({
-        $: {
-          'android:name': FULL_SCREEN_INTENT_PERMISSION,
-        },
-      });
-    }
+    const permissions = [
+      FULL_SCREEN_INTENT_PERMISSION,
+      SCHEDULE_EXACT_ALARM_PERMISSION,
+      POST_NOTIFICATIONS_PERMISSION,
+      'android.permission.VIBRATE',
+      'android.permission.WAKE_LOCK',
+    ];
+
+    permissions.forEach((permission) => {
+      if (
+        !androidManifest.manifest['uses-permission'].some(
+          (item) => item.$['android:name'] === permission
+        )
+      ) {
+        androidManifest.manifest['uses-permission'].push({
+          $: {
+            'android:name': permission,
+          },
+        });
+      }
+    });
 
     return config;
   });
@@ -50,6 +60,11 @@ const withFullScreenAlarmActivity = (config) => {
     const androidManifest = config.modResults;
     const mainApplication = androidManifest.manifest.application[0];
 
+    // Garante que o array de activities existe
+    if (!mainApplication.activity) {
+      mainApplication.activity = [];
+    }
+
     // Verifica se a Activity já existe para evitar duplicatas
     const activityExists = mainApplication.activity.some(
       (activity) => activity.$['android:name'] === FULL_SCREEN_ACTIVITY_NAME
@@ -59,12 +74,14 @@ const withFullScreenAlarmActivity = (config) => {
       mainApplication.activity.push({
         $: {
           'android:name': FULL_SCREEN_ACTIVITY_NAME,
-          'android:exported': 'true', // Necessário para ser chamado por notificação
-          'android:showOnLockScreen': 'true', // Acorda a tela
-          'android:showWhenLocked': 'true', // Acorda a tela
-          'android:turnScreenOn': 'true', // Acorda a tela
-          'android:launchMode': 'singleTop', // Garante que apenas uma instância exista
-          'android:theme': '@style/Theme.App.SplashScreen', // Usa o tema do splash para tela cheia
+          'android:exported': 'true',
+          'android:showOnLockScreen': 'true',
+          'android:showWhenLocked': 'true',
+          'android:turnScreenOn': 'true',
+          'android:launchMode': 'singleTop',
+          'android:taskAffinity': '',
+          'android:excludeFromRecents': 'true',
+          'android:theme': '@android:style/Theme.NoTitleBar.Fullscreen',
         },
       });
     }
@@ -81,7 +98,9 @@ const withFullScreenAlarmNativeCode = (config) => {
     'android',
     async (config) => {
       const root = config.modRequest.platformProjectRoot;
-      const srcDir = path.join(root, 'app', 'src', 'main', 'java', ...PACKAGE_NAME.split('.'));
+      const packageName = config.android?.package || 'com.seuapp.vitacare';
+      const packagePath = packageName.split('.');
+      const srcDir = path.join(root, 'app', 'src', 'main', 'java', ...packagePath);
       const layoutDir = path.join(root, 'app', 'src', 'main', 'res', 'layout');
 
       // Cria o diretório do pacote se não existir
@@ -89,8 +108,7 @@ const withFullScreenAlarmNativeCode = (config) => {
       await fs.promises.mkdir(layoutDir, { recursive: true });
 
       // --- Código Kotlin para FullScreenAlarmActivity.kt ---
-      // CORREÇÃO: Importação correta do R e tratamento do Bundle?
-      const activityCode = `package ${PACKAGE_NAME}
+      const activityCode = `package ${packageName}
 
 import android.content.Context
 import android.content.Intent
@@ -100,10 +118,13 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.facebook.react.ReactApplication
+import com.facebook.react.ReactInstanceManager
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactContext
+import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
-import ${APP_PACKAGE_NAME}.R // CORREÇÃO: Importa o R do pacote principal do app
+import ${packageName}.R
 
 class FullScreenAlarmActivity : AppCompatActivity() {
 
@@ -129,13 +150,17 @@ class FullScreenAlarmActivity : AppCompatActivity() {
         } else {
             window.addFlags(
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
             )
         }
 
+        // Mantém a tela ligada
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
         setContentView(R.layout.activity_full_screen_alarm)
 
-        // CORREÇÃO: Trata o Bundle como nulo
+        // Trata o Bundle como nulo
         val data: Bundle? = intent.getBundleExtra(EXTRA_MEDICATION_DATA)
         val nome = data?.getString("nome") ?: "Medicamento"
         val dosagem = data?.getString("dosagem") ?: "Dose"
@@ -148,13 +173,13 @@ class FullScreenAlarmActivity : AppCompatActivity() {
         // Botão TOMAR
         findViewById<Button>(R.id.btn_tomar).setOnClickListener {
             sendActionToJS("tomar", data)
-            finish() // Fecha a tela de alarme
+            finish()
         }
 
         // Botão ADIAR
         findViewById<Button>(R.id.btn_adiar).setOnClickListener {
             sendActionToJS("adiar", data)
-            finish() // Fecha a tela de alarme
+            finish()
         }
     }
 
@@ -162,25 +187,43 @@ class FullScreenAlarmActivity : AppCompatActivity() {
      * Envia a ação (tomar/adiar) e os dados do medicamento para o lado JS.
      */
     private fun sendActionToJS(action: String, data: Bundle?) {
-        val reactContext = applicationContext as? ReactContext ?: return
-        
-        // CORREÇÃO: Garante que o Bundle não é nulo antes de chamar Arguments.fromBundle
-        val medicationMap = if (data != null) Arguments.fromBundle(data) else Arguments.createMap()
+        try {
+            val reactApplication = application as? ReactApplication ?: return
+            val reactInstanceManager = reactApplication.reactNativeHost.reactInstanceManager
+            val reactContext = reactInstanceManager.currentReactContext as? ReactContext ?: return
 
-        // Cria o payload para o JS
-        val payload = Arguments.createMap().apply {
-            putString("action", action)
-            putMap("medicamento", medicationMap)
+            // Cria o mapa de dados do medicamento
+            val medicationMap: WritableMap = Arguments.createMap().apply {
+                if (data != null) {
+                    putString("medicamentoId", data.getString("medicamentoId"))
+                    putString("nome", data.getString("nome"))
+                    putString("dosagem", data.getString("dosagem"))
+                    putString("horario", data.getString("horario"))
+                    putString("userId", data.getString("userId"))
+                }
+            }
+
+            // Cria o payload para o JS
+            val payload = Arguments.createMap().apply {
+                putString("action", action)
+                putMap("medicamento", medicationMap)
+            }
+
+            // Envia o evento para o JS
+            reactContext
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                .emit(EVENT_ALARM_ACTION, payload)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
-
-        // Envia o evento para o JS
-        reactContext
-            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-            .emit(EVENT_ALARM_ACTION, payload)
     }
 }
 `;
-      await fs.promises.writeFile(path.join(srcDir, 'FullScreenAlarmActivity.kt'), activityCode);
+      await fs.promises.writeFile(
+        path.join(srcDir, 'FullScreenAlarmActivity.kt'),
+        activityCode,
+        'utf8'
+      );
 
       // --- Código XML para activity_full_screen_alarm.xml (inalterado) ---
       const layoutCode = `<?xml version="1.0" encoding="utf-8"?>
@@ -254,7 +297,50 @@ class FullScreenAlarmActivity : AppCompatActivity() {
 
 </LinearLayout>
 `;
-      await fs.promises.writeFile(path.join(layoutDir, 'activity_full_screen_alarm.xml'), layoutCode);
+      await fs.promises.writeFile(
+        path.join(layoutDir, 'activity_full_screen_alarm.xml'),
+        layoutCode,
+        'utf8'
+      );
+
+      // Cria um BroadcastReceiver para interceptar notificações e adicionar fullScreenIntent
+      const broadcastReceiverCode = `package ${packageName}
+
+import android.app.Notification
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.Bundle
+import androidx.core.app.NotificationCompat
+import expo.modules.notifications.notifications.NotificationManager as ExpoNotificationManager
+
+/**
+ * BroadcastReceiver que intercepta notificações de alarme e adiciona fullScreenIntent
+ * Este receiver é registrado para receber notificações do expo-notifications
+ */
+class AlarmNotificationReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        // Este receiver pode ser usado no futuro para interceptar notificações
+        // Por enquanto, o fullScreenIntent será configurado diretamente na Activity
+    }
+}
+`;
+
+      // Salva o BroadcastReceiver (opcional - para uso futuro)
+      // await fs.promises.writeFile(
+      //   path.join(srcDir, 'AlarmNotificationReceiver.kt'),
+      //   broadcastReceiverCode,
+      //   'utf8'
+      // );
+
+      // Nota: O fullScreenIntent precisa ser configurado quando a notificação é criada.
+      // Como o expo-notifications não suporta fullScreenIntent diretamente,
+      // precisamos criar um módulo nativo que modifique as notificações agendadas.
+      // Por enquanto, a Activity FullScreenAlarmActivity será chamada quando o usuário
+      // tocar na notificação em background/killed state.
 
       return config;
     },

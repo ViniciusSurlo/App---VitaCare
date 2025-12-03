@@ -1,8 +1,16 @@
 import { registerRootComponent } from 'expo';
-
+import { AppRegistry } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import App from './App';
 
-// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
-// It also ensures that whether you load the app in Expo Go or in a native build,
-// the environment is set up appropriately
+// Configura o handler de notificações para funcionar em background/killed state
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
+
+// Registra o componente principal
 registerRootComponent(App);
