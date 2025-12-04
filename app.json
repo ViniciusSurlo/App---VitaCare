@@ -43,24 +43,17 @@
         "expo-build-properties",
         {
           "android": {
-            "compileSdkVersion": 35,
-            "targetSdkVersion": 35,
-            "buildToolsVersion": "35.0.0",
-            "enableProguardInReleaseBuilds": true,
-            "enableShrinkResourcesInReleaseBuilds": true,
-            "enableMinifyInReleaseBuilds": true,
-            "package": "com.seuapp.vitacare",
-            "minSdkVersion": 23,
-            "gradleVersion": "8.3"
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "minSdkVersion": 24
           }
         }
       ],
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
-          "color": "#ffffff",
-          "sounds": []
+          "icon": "./assets/logo.png",
+          "color": "#ffffff"
         }
       ]
     ],

@@ -8,31 +8,19 @@
       "developmentClient": true,
       "distribution": "internal",
       "android": {
-        "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease"
-      },
-      "env": {
-        "GRADLE_OPTS": "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
+        "buildType": "apk"
       }
     },
     "preview": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease"
-      },
-      "env": {
-        "GRADLE_OPTS": "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
+        "buildType": "apk"
       }
     },
     "production": {
       "autoIncrement": true,
       "android": {
-        "buildType": "app-bundle",
-        "gradleCommand": ":app:bundleRelease"
-      },
-      "env": {
-        "GRADLE_OPTS": "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
+        "buildType": "app-bundle"
       }
     }
   },
