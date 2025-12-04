@@ -30,11 +30,9 @@
         "barStyle": "light-content"
       },
       "permissions": [
-        "USE_FULL_SCREEN_INTENT",
         "SCHEDULE_EXACT_ALARM",
         "POST_NOTIFICATIONS",
-        "VIBRATE",
-        "WAKE_LOCK"
+        "VIBRATE"
       ]
     },
     "web": {
@@ -64,8 +62,7 @@
           "color": "#ffffff",
           "sounds": []
         }
-      ],
-      "./plugins/withFullScreenAlarm.js"
+      ]
     ],
     "extra": {
       "eas": {

@@ -9,33 +9,27 @@ import { supabase } from './supabaseClient';
 // ========================================
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
-    // Se o app estiver em foreground, não mostra o banner/som/vibração padrão
-    // A lógica de modal já cuida disso.
-    const isForeground = AppState.currentState === 'active';
-    
-    // Se estiver em foreground, o modal é aberto.
-    // Se estiver em background/quit, a notificação padrão (ou fullScreenIntent) é exibida.
+    // Se o app estiver em foreground, o modal é aberto automaticamente
+    // Se estiver em background/quit, a notificação padrão com botões é exibida
     return {
-      shouldShowAlert: isForeground, // Mostra o banner apenas se estiver em foreground
-      shouldPlaySound: !isForeground, // Toca o som apenas se estiver em background/quit
+      shouldShowAlert: true, // Sempre mostra a notificação
+      shouldPlaySound: true, // Sempre toca o som
       shouldSetBadge: true,
     };
   },
 });
 
-// ADICIONADO: Configuração do canal de notificação para FullScreenIntent
+// Configuração do canal de notificação estilo mensagem
 // Este canal deve ser criado antes de agendar a primeira notificação
 export async function setupNotificationChannel() {
   if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('alarm-channel', {
-      name: 'Alarme de Medicamento',
-      importance: Notifications.AndroidImportance.MAX,
+    await Notifications.setNotificationChannelAsync('medication-channel', {
+      name: 'Lembretes de Medicamento',
+      importance: Notifications.AndroidImportance.HIGH,
       sound: 'default',
       vibrationPattern: [0, 250, 250, 250],
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       enableVibrate: true,
-      enableLights: true,
-      lightColor: '#FF0000',
       showBadge: true,
     });
   }
@@ -183,15 +177,9 @@ export async function scheduleMedicationNotifications(medicamento) {
       data: notificationData,
       categoryIdentifier: 'medication-alarm',
       android: {
-        channelId: 'alarm-channel',
-        priority: Notifications.AndroidNotificationPriority.MAX,
-        // O fullScreenIntent será configurado automaticamente pelo plugin
-        // quando a notificação for exibida em background/killed state
-        // A Activity FullScreenAlarmActivity será chamada automaticamente
-        // quando o usuário tocar na notificação ou quando ela for exibida
+        channelId: 'medication-channel',
+        priority: Notifications.AndroidNotificationPriority.HIGH,
         vibrate: [0, 250, 250, 250],
-        // Os dados do medicamento estão em notificationData
-        // e serão passados para a Activity através do Intent
       },
     };
 
@@ -277,8 +265,8 @@ export async function snoozeNotification(medicamento) {
       data: notificationData,
       categoryIdentifier: 'medication-alarm',
       android: {
-        channelId: 'alarm-channel',
-        priority: Notifications.AndroidNotificationPriority.MAX,
+        channelId: 'medication-channel',
+        priority: Notifications.AndroidNotificationPriority.HIGH,
         vibrate: [0, 250, 250, 250],
       },
     },
@@ -456,7 +444,7 @@ export function listenToNotificationResponses() {
 
     // Se o usuário tocou na notificação (ação padrão)
     if (actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
-      // Se o app estiver ativo, abre o modal
+      // Abre o modal se o app estiver ativo
       if (appState === 'active' && notificationModalCallback && data.medicamentoId) {
         try {
           // Busca outros medicamentos no mesmo horário
@@ -481,8 +469,7 @@ export function listenToNotificationResponses() {
         }
       } else {
         // Se o app estiver em background/fechado, apenas registra o log
-        // O full-screen intent já foi acionado pelo sistema
-        console.log('📱 App em background/fechado - full-screen intent acionado');
+        console.log('📱 App em background/fechado - notificação exibida');
       }
     }
   });

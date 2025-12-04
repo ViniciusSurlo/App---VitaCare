@@ -8,7 +8,6 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from './src/services/supabaseClient';
 import * as notificationService from './src/services/notificationService';
-import { addAlarmActionListener } from './src/services/fullScreenAlarmBridge'; // ADICIONADO: Bridge para o alarme fullscreen
 import { ThemeProvider, useTheme } from './src/utils/ThemeContext';
 
 // Telas
@@ -106,34 +105,10 @@ function AppContent() {
 
     const notificationListener = notificationService.listenToNotifications();
     const responseListener = notificationService.listenToNotificationResponses();
-    
-    // ADICIONADO: Listener para as ações do alarme fullscreen (Android)
-    const alarmActionListener = addAlarmActionListener(async (payload) => {
-      console.log('🚨 Ação do Alarme FullScreen recebida:', payload);
-      const { action, medicamento } = payload;
-      
-      // O medicamento vem como um objeto simples, precisa ser mapeado para o formato esperado
-      const med = {
-        id: medicamento.medicamentoId,
-        nome: medicamento.nome,
-        dosagem: medicamento.dosagem,
-        horario: medicamento.horario,
-        userId: medicamento.userId,
-      };
-
-      if (action === 'tomar') {
-        await notificationService.registerMedicationTaken(med);
-        // Opcional: Cancelar notificações pendentes relacionadas
-        // Como a Activity fecha, a notificação de sistema deve ser dispensada automaticamente.
-      } else if (action === 'adiar') {
-        await notificationService.snoozeNotification(med);
-      }
-    });
 
     return () => {
       notificationListener.remove();
       responseListener.remove();
-      alarmActionListener.remove(); // Limpa o listener do alarme
     };
   }, []);
 
