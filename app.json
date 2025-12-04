@@ -35,8 +35,7 @@
         "POST_NOTIFICATIONS",
         "VIBRATE",
         "WAKE_LOCK"
-      ],
-      "googleServicesFile": "./android/app/google-services.json"
+      ]
     },
     "web": {
       "favicon": "./assets/logo.png"
