@@ -1,16 +1,24 @@
 import { registerRootComponent } from 'expo';
-import { AppRegistry } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import App from './App';
 
-// Configura o handler de notificações para funcionar em background/killed state
+// ========================================
+// CONFIGURAÇÃO GLOBAL DE NOTIFICAÇÕES
+// ========================================
+// Handler que funciona em foreground, background e killed state
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
+  handleNotification: async () => {
+    // Sempre mostra a notificação, mesmo em foreground
+    // Os botões de ação funcionarão através do listener de resposta
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    };
+  },
 });
 
-// Registra o componente principal
+// ========================================
+// REGISTRO DO APP
+// ========================================
 registerRootComponent(App);

@@ -245,38 +245,7 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Botão de Teste de Notificação */}
-        <TouchableOpacity
-          style={{
-            backgroundColor: "#4A90E2",
-            padding: 15,
-            borderRadius: 10,
-            margin: 20,
-          }}
-          onPress={async () => {
-            await Notifications.scheduleNotificationAsync({
-              content: {
-                title: "💊 Teste",
-                body: "Notificação de teste",
-                data: {
-                  medicamentoId: "test-123",
-                  nome: "Rivotril",
-                  dosagem: "2mg",
-                  horario: "15:00",
-                  userId: "test-user",
-                },
-              },
-              trigger: { seconds: 5 },
-            });
-            Alert.alert("✅", "Notificação em 5 segundos!");
-          }}
-        >
-          <Text
-            style={{ color: "#fff", textAlign: "center", fontWeight: "bold" }}
-          >
-            🔔 Testar Notificação (5s)
-          </Text>
-        </TouchableOpacity>
+       
         
         {/* Medicamentos */}
         <View style={styles.section}>

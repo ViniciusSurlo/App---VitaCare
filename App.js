@@ -96,19 +96,41 @@ function AppContent() {
     };
   }, []);
 
-  // 🔔 Notificações
+  // 🔔 Notificações - Inicialização completa
   useEffect(() => {
-    notificationService.setNotificationModalCallback((medicamentos) => {
-      setMedicamentosParaTomar(medicamentos);
-      setNotificationModalVisible(true);
-    });
+    let notificationListener = null;
+    let responseListener = null;
 
-    const notificationListener = notificationService.listenToNotifications();
-    const responseListener = notificationService.listenToNotificationResponses();
+    const setupNotifications = async () => {
+      try {
+        // 1. Inicializa o sistema de notificações (canal + categorias)
+        await notificationService.initializeNotifications();
+
+        // 2. Configura callback do modal
+        notificationService.setNotificationModalCallback((medicamentos) => {
+          setMedicamentosParaTomar(medicamentos);
+          setNotificationModalVisible(true);
+        });
+
+        // 3. Configura listeners
+        notificationListener = notificationService.listenToNotifications();
+        responseListener = notificationService.listenToNotificationResponses();
+
+        console.log('✅ Sistema de notificações configurado');
+      } catch (error) {
+        console.error('❌ Erro ao configurar notificações:', error);
+      }
+    };
+
+    setupNotifications();
 
     return () => {
-      notificationListener.remove();
-      responseListener.remove();
+      if (notificationListener) {
+        notificationListener.remove();
+      }
+      if (responseListener) {
+        responseListener.remove();
+      }
     };
   }, []);
 
